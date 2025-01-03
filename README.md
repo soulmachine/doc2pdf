@@ -14,10 +14,14 @@ A Python tool to convert MHTML (.doc) files exported from Confluence to PDF form
 
 ```bash
 python doc2pdf.py <input_file> <output_file>
+# or run in docker
+docker run -it --rm -v $(pwd):/app soulmachine/doc2pdf <input_file> <output_file>
 ```
 
 Or
 
 ```bash
 python doc2pdf.py input_dir output_dir
+# or run in docker
+docker run -it --rm -v doc_dir:/input_dir pdf_dir:/output_dir soulmachine/doc2pdf /input_dir /output_dir
 ```
