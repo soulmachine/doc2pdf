@@ -17,4 +17,4 @@ RUN apt -y update && \
     pip3 install --break-system-packages -r requirements.txt
 
 # Set default command
-ENTRYPOINT ["python3", "doc2pdf.py"]
+ENTRYPOINT ["python3", "/app/doc2pdf.py"]
