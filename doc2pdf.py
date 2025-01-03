@@ -5,6 +5,7 @@ import base64
 import email
 from email import policy
 from pathlib import Path
+from multiprocessing import Pool, cpu_count
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
@@ -179,6 +180,11 @@ def validate_pdf(file_path):
     except Exception as e:
         return False
 
+def process_file(args):
+    """Helper function for multiprocessing"""
+    input_file, output_file = args
+    return convert_mhtml_to_pdf(input_file, output_file)
+
 def main():
     parser = argparse.ArgumentParser(description='Convert MHTML/DOC files to PDF')
     parser.add_argument('input', help='Input .doc or .mhtml file or directory')
@@ -192,11 +198,21 @@ def main():
         # Process directory
         if not output_path.exists():
             output_path.mkdir(parents=True)
-        # Support multiple extensions
-        for ext in ['*.mhtml', '*.mht', '*.doc']:
+
+        # Collect all files to process
+        files_to_process = []
+        for ext in ['*.mhtml', '*.mht', '*.doc']: # Support multiple extensions
             for input_file in input_path.rglob(ext):
                 output_file = output_path / input_file.with_suffix('.pdf').name
-                convert_mhtml_to_pdf(input_file, output_file)
+                files_to_process.append((input_file, output_file))
+
+        # Use multiprocessing
+        with Pool(processes=cpu_count()) as pool:
+            results = pool.map(process_file, files_to_process)
+
+            # Check results
+            if not all(results):
+                print("Some files failed to convert")
     else:
         # Process single file
         if input_path.suffix.lower() not in ['.mhtml', '.mht', '.doc']:
