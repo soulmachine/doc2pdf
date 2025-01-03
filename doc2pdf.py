@@ -119,6 +119,7 @@ def html_to_pdf(html_content: str, pdf_file: Path) -> bool:
     a Chromium installation. Temporary HTML files are automatically cleaned up.
     """
     html_output_path = pdf_file.with_suffix('.html').absolute()
+    html_output_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         # Write temporary HTML file
         html_output_path.write_text(html_content, encoding='utf-8')
