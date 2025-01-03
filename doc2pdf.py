@@ -10,6 +10,8 @@ from bs4 import BeautifulSoup
 from weasyprint import HTML
 from xhtml2pdf import pisa
 
+from playwright.sync_api import sync_playwright, Browser
+
 
 def _extract_html(input_path: Path) -> str:
     """Extract HTML content from the MHTML file."""
@@ -79,8 +81,7 @@ def html_to_pdf(html_content: str, pdf_file: Path) -> bool:
     """Convert HTML to PDF using WeasyPrint.
 
     Note: While WeasyPrint supports embedded images, some layout issues may occur
-    with images being partially cut off. For complex layouts, consider manual
-    adjustments to the HTML/CSS.
+    with images being partially cut off.
     """
     try:
         HTML(string=html_content).write_pdf(pdf_file)
@@ -89,11 +90,10 @@ def html_to_pdf(html_content: str, pdf_file: Path) -> bool:
         return False
 
 def html_to_pdf_xhtml2pdf(html_content: str, pdf_file: Path) -> bool:
-    """Convert clean HTML to PDF using xhtml2pdf.
+    """Convert HTML to PDF using xhtml2pdf.
 
     Note: This implementation has limited support for embedded images as xhtml2pdf
-    doesn't fully support data URIs for images. Consider using html_to_pdf() for
-    better image handling.
+    doesn't fully support data URIs for images.
     """
     try:
         with open(pdf_file, 'w+b') as output_file:
@@ -102,18 +102,56 @@ def html_to_pdf_xhtml2pdf(html_content: str, pdf_file: Path) -> bool:
     except Exception as e:
         return False
 
-def convert_mhtml_to_pdf(input_path: Path, output_path: Path) -> bool:
+def html_to_pdf(browser: Browser, html_content: str, pdf_file: Path) -> bool:
+    """Convert HTML to PDF using Playwright's headless Chromium browser.
+
+    Args:
+        html_content: Clean HTML content to convert
+        pdf_file: Path to save the output PDF
+
+    Returns:
+        bool: True if conversion succeeded, False otherwise
+
+    Note: This method provides the most accurate PDF rendering but requires
+    a Chromium installation. Temporary HTML files are automatically cleaned up.
+    """
+    html_output_path = pdf_file.with_suffix('.html').absolute()
+    try:
+        # Write temporary HTML file
+        html_output_path.write_text(html_content, encoding='utf-8')
+
+        # Use Playwright for PDF generation
+        page = browser.new_page()
+
+        # Load and convert to PDF
+        page.goto(f'file://{html_output_path}')
+        page.pdf(
+            path=pdf_file,
+            format='A4',
+            print_background=True
+        )
+        page.close()
+        return True
+    except Exception as e:
+        print(f"Playwright PDF conversion error: {str(e)}")
+        return False
+    finally:
+        # Clean up temporary HTML file
+        if html_output_path.exists():
+            html_output_path.unlink()
+
+def convert_mhtml_to_pdf(browser: Browser, input_path: Path, output_path: Path) -> bool:
     """Convert the MHTML file to PDF."""
     try:
         # Clean the HTML
         cleaned_html = _extract_html(input_path)
 
         # Write html to file in same location as PDF
-        html_output_path = output_path.with_suffix('.html')
+        html_output_path = output_path.with_suffix('.html').absolute()
         with open(html_output_path, 'w', encoding='utf-8') as f:
             f.write(cleaned_html)
 
-        if html_to_pdf(cleaned_html, output_path):
+        if html_to_pdf(browser, cleaned_html, output_path):
             print(f"Successfully converted {input_path} to {output_path}")
             return True
         else:
@@ -132,20 +170,25 @@ def main():
     input_path = Path(args.input)
     output_path = Path(args.output)
 
-    if input_path.is_dir():
-        # Process directory
-        if not output_path.exists():
-            output_path.mkdir(parents=True)
-        # Support multiple extensions
-        for ext in ['*.mhtml', '*.mht', '*.doc']:
-            for input_file in input_path.rglob(ext):
-                output_file = output_path / input_file.with_suffix('.pdf').name
-                convert_mhtml_to_pdf(input_file, output_file)
-    else:
-        # Process single file
-        if input_path.suffix.lower() not in ['.mhtml', '.mht', '.doc']:
-            raise ValueError("Input file must be .mhtml, .mht, or .doc")
-        convert_mhtml_to_pdf(input_path, output_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+
+        if input_path.is_dir():
+            # Process directory
+            if not output_path.exists():
+                output_path.mkdir(parents=True)
+            # Support multiple extensions
+            for ext in ['*.mhtml', '*.mht', '*.doc']:
+                for input_file in input_path.rglob(ext):
+                    output_file = output_path / input_file.with_suffix('.pdf').name
+                    convert_mhtml_to_pdf(browser,input_file, output_file)
+        else:
+            # Process single file
+            if input_path.suffix.lower() not in ['.mhtml', '.mht', '.doc']:
+                raise ValueError("Input file must be .mhtml, .mht, or .doc")
+            convert_mhtml_to_pdf(browser, input_path, output_path)
+
+        browser.close()
 
 if __name__ == '__main__':
     main()
